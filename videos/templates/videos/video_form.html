@@ -1,0 +1,13 @@
+{% extends "videos/base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<h1 class="h4 mb-3">{{ title }}</h1>
+<form method="post" class="card card-body">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <div class="d-flex gap-2">
+    <button class="btn btn-primary" type="submit">Save</button>
+    <a class="btn btn-secondary" href="{% url 'video_list' %}">Cancel</a>
+  </div>
+</form>
+{% endblock %}
