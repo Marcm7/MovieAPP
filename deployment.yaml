@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: videostore-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: videostore
+  template:
+    metadata:
+      labels:
+        app: videostore
+    spec:
+      containers:
+        - name: videostore-container
+          image: videostore:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8000
