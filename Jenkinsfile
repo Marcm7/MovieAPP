@@ -1,12 +1,12 @@
 pipeline {
   agent any
 
-  // Make Homebrew + default bins visible to Jenkins
+  // Make sure Jenkins can find brew-installed tools on macOS
   environment {
     PATH = "/opt/homebrew/bin:/usr/local/bin:${env.PATH}"
   }
 
-  // Optional: auto-build every 2 minutes on new commits
+  // Auto-check GitHub every 2 minutes
   triggers { pollSCM('H/2 * * * *') }
 
   stages {
@@ -20,16 +20,23 @@ pipeline {
     stage('Build in Minikube Docker') {
       steps {
         sh '''
-          # Point Docker CLI at Minikube’s dockerd
+          set -euo pipefail
+
+          echo ">> Pointing Docker CLI to Minikube dockerd"
           eval "$(minikube docker-env)"
 
-          # Sanity prints (visible in Console Output)
-          which docker && docker version --format '{{.Server.Version}}'
-          which kubectl && kubectl version --client=true --output=yaml
-          which minikube && minikube version
+          echo ">> Tool versions"
+          which docker && docker version --format '{{.Server.Version}}' || true
+          which kubectl && kubectl version --client --output=yaml || true
+          which minikube && minikube version || true
 
-          # Build image inside Minikube
-          docker build -t videostore:latest .
+          echo ">> Compute image tag (short Git SHA)"
+          GIT_SHA="$(git rev-parse --short HEAD)"
+          echo "$GIT_SHA" > .gitsha
+          echo "TAG=$GIT_SHA"
+
+          echo ">> Build image videostore:${GIT_SHA}"
+          docker build -t videostore:${GIT_SHA} .
         '''
       }
     }
@@ -37,9 +44,25 @@ pipeline {
     stage('Deploy to Minikube') {
       steps {
         sh '''
+          set -euo pipefail
+
+          GIT_SHA="$(cat .gitsha)"
+          echo ">> Using tag videostore:${GIT_SHA}"
+
+          echo ">> Ensure manifests exist in cluster (idempotent)"
           kubectl apply -f deployment.yaml
           kubectl apply -f service.yaml
-          kubectl rollout status deployment/videostore-deployment
+
+          echo ">> Determine container name from deployment"
+          DEPLOY="videostore-deployment"
+          CONTAINER="$(kubectl get deploy ${DEPLOY} -o jsonpath='{.spec.template.spec.containers[0].name}')"
+          echo "Container=${CONTAINER}"
+
+          echo ">> Update deployment to new image"
+          kubectl set image deployment/${DEPLOY} ${CONTAINER}=videostore:${GIT_SHA}
+
+          echo ">> Wait for rollout"
+          kubectl rollout status deployment/${DEPLOY}
         '''
       }
     }
